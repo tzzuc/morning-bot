@@ -34,14 +34,20 @@ def parse_event_with_claude(text: str) -> dict:
         messages=[{
             'role': 'user',
             'content': (
-                f'今天是 {today}。把以下文字解析成行事曆事件，只回傳 JSON：\n\n'
+                f'今天是 {today}。把以下文字解析成行事曆事件，只回傳 JSON，不要加任何說明或 markdown：\n\n'
                 f'"{text}"\n\n'
                 '格式：{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"}\n'
                 '若無時間則用 09:00-10:00，若無日期則用今天。'
             ),
         }],
     )
-    return json.loads(response.content[0].text)
+    raw = response.content[0].text.strip()
+    # 移除可能的 markdown code block
+    if raw.startswith('```'):
+        raw = raw.split('```')[1]
+        if raw.startswith('json'):
+            raw = raw[4:]
+    return json.loads(raw.strip())
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

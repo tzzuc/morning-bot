@@ -181,7 +181,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    if data == 'confirm_edit_yes':
+    if data == 'move_confirm':
+        pending = context.user_data.pop('pending_move', None)
+        if pending:
+            try:
+                calendar_api.update_event(pending['event_id'], calendar_type=pending['cal_type'])
+                cal_label = calendar_api.CAL_LABELS.get(pending['cal_type'], pending['cal_type'])
+                await query.edit_message_text(f"✅ 已移到「{cal_label}」")
+            except Exception as e:
+                await query.edit_message_text(f'❌ 移動失敗\n\n{e}')
+
+    elif data == 'move_cancel':
+        context.user_data.pop('pending_move', None)
+        await query.edit_message_text('✅ 時間已更新，日曆維持不變')
+
+    elif data == 'confirm_edit_yes':
         event = context.user_data.pop('confirm_edit_event', None)
         changes = context.user_data.pop('pending_edit_changes', {})
         if event and changes:
@@ -276,8 +290,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('⏳ 修改中...')
         try:
             changes = parse_edit(text, event)
-            calendar_api.update_event(event['id'], **changes)
-            await update.message.reply_text(f"✅ 已修改：{event.get('summary', '')}")
+            cal_type = changes.pop('calendar_type', None)
+
+            # 先更新時間/標題
+            if changes:
+                calendar_api.update_event(event['id'], **changes)
+
+            # 移到其他日曆需要額外確認
+            if cal_type:
+                cal_label = calendar_api.CAL_LABELS.get(cal_type, cal_type)
+                context.user_data['pending_move'] = {'event_id': event['id'], 'cal_type': cal_type}
+                keyboard = [[
+                    InlineKeyboardButton(f'✅ 是，移到{cal_label}', callback_data='move_confirm'),
+                    InlineKeyboardButton('❌ 不用', callback_data='move_cancel'),
+                ]]
+                await update.message.reply_text(
+                    f"時間已更新 ✅\n\n要把這個事件移到「{cal_label}」嗎？",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                await update.message.reply_text(f"✅ 已修改：{event.get('summary', '')}")
         except Exception as e:
             logging.error(e)
             await update.message.reply_text(f'❌ 修改失敗\n\n{e}')

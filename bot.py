@@ -257,8 +257,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         idx = data.removeprefix('del_')
         event = context.user_data.get('delete_events', {}).get(idx)
         if event:
+            context.user_data['pending_delete'] = event
+            keyboard = [[
+                InlineKeyboardButton('✅ 確定刪除', callback_data='del_confirm'),
+                InlineKeyboardButton('❌ 取消', callback_data='del_cancel'),
+            ]]
+            await query.edit_message_text(
+                f"確定要刪除「{calendar_api.format_event(event)}」？",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+    elif data == 'del_confirm':
+        event = context.user_data.pop('pending_delete', None)
+        if event:
             calendar_api.delete_event(event['id'])
-            await query.edit_message_text(f"✅ 已刪除：{event.get('summary', '')}")
+            await query.edit_message_text(f"✅  已刪除：{event.get('summary', '')}")
 
     elif data == 'slot_cancel':
         context.user_data.pop('pending_slots', None)

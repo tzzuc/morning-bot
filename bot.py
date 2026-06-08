@@ -362,7 +362,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(e)
-        await update.message.reply_text('❌ 解析失敗，請試試更明確的說法')
+        await update.message.reply_text(f'❌ 解析失敗\n\n{e}')
 
 
 async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):

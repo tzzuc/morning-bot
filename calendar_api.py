@@ -31,20 +31,19 @@ def get_calendar_id(calendar_type: str) -> str:
     if calendar_type in _calendar_ids:
         return _calendar_ids[calendar_type]
 
-    name = MEETING_CAL_NAME if calendar_type == 'meeting' else WORK_CAL_NAME
+    env_key = 'MEETING_CAL_ID' if calendar_type == 'meeting' else 'WORK_CAL_ID'
+    cal_id = os.environ.get(env_key)
+    if cal_id:
+        _calendar_ids[calendar_type] = cal_id
+        return cal_id
+
+    raise ValueError(f"請在 Railway 設定環境變數 {env_key}")
+
+
+def list_calendars() -> list[dict]:
     service = get_service()
-
-    for cal in service.calendarList().list().execute().get('items', []):
-        if cal['summary'] == name:
-            _calendar_ids[calendar_type] = cal['id']
-            return cal['id']
-
-    new_cal = service.calendars().insert(body={
-        'summary': name,
-        'timeZone': 'Asia/Taipei',
-    }).execute()
-    _calendar_ids[calendar_type] = new_cal['id']
-    return new_cal['id']
+    items = service.calendarList().list().execute().get('items', [])
+    return [{'id': c['id'], 'name': c['summary']} for c in items]
 
 
 def get_events(date: datetime) -> list[dict]:

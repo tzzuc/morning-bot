@@ -82,6 +82,17 @@ def parse_edit(text: str, event: dict) -> dict:
     return json.loads(_strip_json(response.content[0].text))
 
 
+async def calendars_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        cals = calendar_api.list_calendars()
+        lines = ['你的所有日曆（複製 ID 到 Railway 環境變數）：\n']
+        for c in cals:
+            lines.append(f"📅 {c['name']}\n`{c['id']}`\n")
+        await update.message.reply_text('\n'.join(lines), parse_mode='Markdown')
+    except Exception as e:
+        await update.message.reply_text(f'❌ {e}')
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         '嗨！我是你的行事曆助理 📅\n\n'
@@ -359,6 +370,7 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler('calendars', calendars_command))
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('today', today_command))
     app.add_handler(CommandHandler('tomorrow', tomorrow_command))

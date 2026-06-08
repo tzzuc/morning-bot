@@ -48,10 +48,10 @@ def analyze_message(text: str) -> dict:
             '- "suggest_slots"：想找可行時段安排會議（有「約」「找時間」「安排」等詞且沒有明確時間）\n'
             '- "edit_event"：修改、更改、調整、改成、換成、移到 已存在的事件（有「改」「更改」「調整」「移到」「換成」等詞）\n'
             '- "other"：其他\n\n'
-            '判斷 calendar_type（新增時用）：\n'
-            '- "meeting"：與他人的會議、約定、電話\n'
-            '- "work"：個人工作任務、專注時間\n'
-            '- "kahowa"：有提到 Kahowa 的事件\n\n'
+            '判斷 calendar_type（新增時用，優先順序由高到低）：\n'
+            '- "kahowa"：訊息中有提到「kahowa」（不分大小寫）→ 一定用這個\n'
+            '- "work"：個人工作任務、專注時間、報告、整理\n'
+            '- "meeting"：與他人的會議、約定、電話（預設）\n\n'
             '回傳格式（所有欄位都要有，沒有的填 null）：\n'
             '{"intent":"...","calendar_type":"meeting|work","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}}\n\n'
             '若 intent 為 edit_event：\n'
@@ -310,6 +310,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif result['intent'] == 'add_event' and result.get('event'):
             e = result['event']
             cal_type = result.get('calendar_type', 'meeting')
+            if 'kahowa' in text.lower():
+                cal_type = 'kahowa'
             calendar_api.create_event(title=e['title'], date=e['date'],
                                       start_time=e['start_time'], end_time=e['end_time'],
                                       calendar_type=cal_type)

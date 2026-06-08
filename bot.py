@@ -280,7 +280,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ 已修改：{event.get('summary', '')}")
         except Exception as e:
             logging.error(e)
-            await update.message.reply_text('❌ 修改失敗，請再試一次')
+            await update.message.reply_text(f'❌ 修改失敗\n\n{e}')
         return
 
     await update.message.reply_text('⏳ 解析中...')

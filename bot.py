@@ -45,13 +45,17 @@ def analyze_message(text: str) -> dict:
             f'訊息："{text}"\n\n'
             '判斷 intent：\n'
             '- "add_event"：新增特定時間的事件\n'
-            '- "suggest_slots"：想安排時間但需要找可行時段（有「約」「安排」「找時間」等詞）\n'
+            '- "suggest_slots"：想安排時間但需要找可行時段\n'
+            '- "edit_event"：修改或更新已存在的事件\n'
             '- "other"：其他\n\n'
             '判斷 calendar_type：\n'
             '- "meeting"：與他人的會議、約定、電話\n'
             '- "work"：個人工作任務、專注時間\n\n'
             '回傳格式：\n'
-            '{"intent":"...","calendar_type":"...","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1}\n\n'
+            '{"intent":"...","calendar_type":"...","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"...","start_time":"...","end_time":"..."}}\n\n'
+            '若 intent 為 edit_event：\n'
+            '- search_query：用來搜尋事件的關鍵字（如「Vesta」「週一會議」）\n'
+            '- changes：要修改的欄位（只含要改的，可為 null 若訊息未說明要怎麼改）\n'
             '若 intent 為 suggest_slots，event 為 null。若無明確日期用今天，若無時間用09:00-10:00。'
         )}],
     )
@@ -148,7 +152,45 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    if data == 'edit_cancel':
+    if data == 'confirm_edit_yes':
+        event = context.user_data.pop('confirm_edit_event', None)
+        changes = context.user_data.pop('pending_edit_changes', {})
+        if event and changes:
+            try:
+                calendar_api.update_event(event['id'], **changes)
+                await query.edit_message_text(f"✅ 已修改：{event.get('summary', '')}")
+            except Exception as e:
+                logging.error(e)
+                await query.edit_message_text('❌ 修改失敗，請再試一次')
+        elif event:
+            context.user_data['editing_event'] = event
+            await query.edit_message_text(
+                f"好，修改「{event.get('summary', '')}」\n\n請告訴我要改什麼，例如：\n「改到週五下午3點」\n「標題改成 Thryve 會議」"
+            )
+
+    elif data == 'confirm_edit_no':
+        context.user_data.pop('confirm_edit_event', None)
+        context.user_data.pop('pending_edit_changes', None)
+        await query.edit_message_text('好，請重新描述你想修改的事件')
+
+    elif data.startswith('confirm_edit_'):
+        idx = data.removeprefix('confirm_edit_')
+        event = context.user_data.pop('confirm_edit_matches', {}).get(idx)
+        changes = context.user_data.pop('pending_edit_changes', {})
+        if event and changes:
+            try:
+                calendar_api.update_event(event['id'], **changes)
+                await query.edit_message_text(f"✅ 已修改：{event.get('summary', '')}")
+            except Exception as e:
+                logging.error(e)
+                await query.edit_message_text('❌ 修改失敗，請再試一次')
+        elif event:
+            context.user_data['editing_event'] = event
+            await query.edit_message_text(
+                f"好，修改「{event.get('summary', '')}」\n\n請告訴我要改什麼："
+            )
+
+    elif data == 'edit_cancel':
         context.user_data.pop('editing_event', None)
         context.user_data.pop('edit_events', None)
         await query.edit_message_text('已取消')
@@ -247,11 +289,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ 已新增到「{cal_label}」\n📌 {e['title']}\n📅 {e['date']} {e['start_time']}–{e['end_time']}"
             )
 
+        elif result['intent'] == 'edit_event':
+            query = result.get('search_query', '')
+            matches = calendar_api.search_events(query) if query else []
+            if not matches:
+                await update.message.reply_text(f'找不到包含「{query}」的事件 🔍')
+                return
+
+            changes = result.get('changes') or {}
+            context.user_data['pending_edit_changes'] = changes
+
+            if len(matches) == 1:
+                event = matches[0]
+                context.user_data['confirm_edit_event'] = event
+                keyboard = [
+                    [InlineKeyboardButton('✅ 對，改這個', callback_data='confirm_edit_yes'),
+                     InlineKeyboardButton('❌ 不是', callback_data='confirm_edit_no')]
+                ]
+                detail = calendar_api.format_event(event)
+                await update.message.reply_text(
+                    f'找到這個事件：\n📌 {detail}\n\n是這個嗎？',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                context.user_data['confirm_edit_matches'] = {str(i): e for i, e in enumerate(matches[:5])}
+                keyboard = [
+                    [InlineKeyboardButton(calendar_api.format_event(e), callback_data=f"confirm_edit_{i}")]
+                    for i, e in enumerate(matches[:5])
+                ]
+                keyboard.append([InlineKeyboardButton('取消', callback_data='edit_cancel')])
+                await update.message.reply_text(
+                    f'找到多個包含「{query}」的事件，選一個：',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+
         else:
             await update.message.reply_text(
                 '沒有看懂，請試試：\n'
                 '「今天下午2點 Vesta 報告 2小時」\n'
-                '「幫我約 John 下週開會一小時」'
+                '「幫我約 John 下週開會一小時」\n'
+                '「Vesta 下週會議改到週五下午3點」'
             )
 
     except Exception as e:

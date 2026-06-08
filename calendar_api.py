@@ -186,6 +186,19 @@ def get_free_slots(days_ahead: int = 7, duration_hours: float = 1.0) -> list[dic
     return slots[:3]
 
 
+def search_events(keyword: str, days_ahead: int = 30) -> list[dict]:
+    now = datetime.now(TAIWAN_TZ)
+    keyword_lower = keyword.lower()
+    matches = []
+    seen = set()
+    for day_offset in range(days_ahead):
+        for e in get_events(now + timedelta(days=day_offset)):
+            if e['id'] not in seen and keyword_lower in e.get('summary', '').lower():
+                seen.add(e['id'])
+                matches.append(e)
+    return matches
+
+
 def format_event(event: dict) -> str:
     start = event['start'].get('dateTime', event['start'].get('date', ''))
     time_str = datetime.fromisoformat(start).astimezone(TAIWAN_TZ).strftime('%H:%M') if 'T' in start else '全天'

@@ -49,7 +49,7 @@ def get_calendar_id(calendar_type: str) -> str:
 
 def get_events(date: datetime) -> list[dict]:
     service = get_service()
-    start = TAIWAN_TZ.localize(date.replace(hour=0, minute=0, second=0, microsecond=0))
+    start = TAIWAN_TZ.localize(date.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None))
     end = start + timedelta(days=1)
 
     all_events = []
@@ -151,8 +151,8 @@ def get_free_slots(days_ahead: int = 7, duration_hours: float = 1.0) -> list[dic
             continue
 
         events = get_events(date)
-        work_start = TAIWAN_TZ.localize(date.replace(hour=9, minute=0, second=0, microsecond=0))
-        work_end = TAIWAN_TZ.localize(date.replace(hour=19, minute=0, second=0, microsecond=0))
+        work_start = TAIWAN_TZ.localize(date.replace(hour=9, minute=0, second=0, microsecond=0, tzinfo=None))
+        work_end = TAIWAN_TZ.localize(date.replace(hour=19, minute=0, second=0, microsecond=0, tzinfo=None))
         duration = timedelta(hours=duration_hours)
 
         busy = sorted([

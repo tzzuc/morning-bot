@@ -94,8 +94,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_day_events(chat_id: int, date: datetime, context: ContextTypes.DEFAULT_TYPE):
-    events = calendar_api.get_events(date)
     date_str = date.strftime('%m/%d (%a)')
+    try:
+        events = calendar_api.get_events(date)
+    except Exception as e:
+        logging.error(e)
+        await context.bot.send_message(chat_id, f'❌ 無法讀取行事曆，請稍後再試')
+        return
     if not events:
         await context.bot.send_message(chat_id, f'📅 {date_str}\n\n✨ 沒有行程')
         return
@@ -114,8 +119,13 @@ async def tomorrow_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TAIWAN_TZ)
     events = []
-    for i in range(7):
-        events.extend(calendar_api.get_events(now + timedelta(days=i)))
+    try:
+        for i in range(7):
+            events.extend(calendar_api.get_events(now + timedelta(days=i)))
+    except Exception as e:
+        logging.error(e)
+        await update.message.reply_text('❌ 無法讀取行事曆，請稍後再試')
+        return
 
     if not events:
         await update.message.reply_text('未來7天沒有可修改的行程 ✨')
@@ -133,7 +143,12 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    events = calendar_api.get_events(datetime.now(TAIWAN_TZ))
+    try:
+        events = calendar_api.get_events(datetime.now(TAIWAN_TZ))
+    except Exception as e:
+        logging.error(e)
+        await update.message.reply_text('❌ 無法讀取行事曆，請稍後再試')
+        return
     if not events:
         await update.message.reply_text('今天沒有可刪除的行程 ✨')
         return

@@ -14,6 +14,7 @@ _calendar_ids: dict[str, str] = {}
 
 
 def get_service():
+    from google.auth.transport.requests import Request
     creds = Credentials(
         token=None,
         refresh_token=os.environ['GOOGLE_REFRESH_TOKEN'],
@@ -22,6 +23,7 @@ def get_service():
         token_uri='https://oauth2.googleapis.com/token',
         scopes=SCOPES,
     )
+    creds.refresh(Request())
     return build('calendar', 'v3', credentials=creds)
 
 

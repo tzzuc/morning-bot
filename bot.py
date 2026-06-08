@@ -99,7 +99,7 @@ async def send_day_events(chat_id: int, date: datetime, context: ContextTypes.DE
         events = calendar_api.get_events(date)
     except Exception as e:
         logging.error(e)
-        await context.bot.send_message(chat_id, f'❌ 無法讀取行事曆，請稍後再試')
+        await context.bot.send_message(chat_id, f'❌ 無法讀取行事曆\n\n錯誤：{e}')
         return
     if not events:
         await context.bot.send_message(chat_id, f'📅 {date_str}\n\n✨ 沒有行程')

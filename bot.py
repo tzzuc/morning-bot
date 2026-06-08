@@ -39,24 +39,25 @@ def analyze_message(text: str) -> dict:
     today = datetime.now(TAIWAN_TZ).strftime('%Y-%m-%d %A')
     response = claude.messages.create(
         model='claude-haiku-4-5-20251001',
-        max_tokens=300,
+        max_tokens=400,
         messages=[{'role': 'user', 'content': (
             f'今天是 {today}。分析訊息，只回傳 JSON，不加任何說明或 markdown。\n\n'
             f'訊息："{text}"\n\n'
             '判斷 intent：\n'
-            '- "add_event"：新增特定時間的事件\n'
-            '- "suggest_slots"：想安排時間但需要找可行時段\n'
-            '- "edit_event"：修改或更新已存在的事件\n'
+            '- "add_event"：新增一個全新的事件\n'
+            '- "suggest_slots"：想找可行時段安排會議（有「約」「找時間」「安排」等詞且沒有明確時間）\n'
+            '- "edit_event"：修改、更改、調整、改成、換成、移到 已存在的事件（有「改」「更改」「調整」「移到」「換成」等詞）\n'
             '- "other"：其他\n\n'
-            '判斷 calendar_type：\n'
+            '判斷 calendar_type（新增時用）：\n'
             '- "meeting"：與他人的會議、約定、電話\n'
             '- "work"：個人工作任務、專注時間\n\n'
-            '回傳格式：\n'
-            '{"intent":"...","calendar_type":"...","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"...","start_time":"...","end_time":"..."}}\n\n'
+            '回傳格式（所有欄位都要有，沒有的填 null）：\n'
+            '{"intent":"...","calendar_type":"meeting|work","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}}\n\n'
             '若 intent 為 edit_event：\n'
-            '- search_query：用來搜尋事件的關鍵字（如「Vesta」「週一會議」）\n'
-            '- changes：要修改的欄位（只含要改的，可為 null 若訊息未說明要怎麼改）\n'
-            '若 intent 為 suggest_slots，event 為 null。若無明確日期用今天，若無時間用09:00-10:00。'
+            '- search_query：用來搜尋事件的關鍵字（事件名稱關鍵字）\n'
+            '- changes：只含要修改的欄位；若要換日曆類型（如工作規劃改成會議），加入 calendar_type 欄位\n'
+            '若 intent 為 suggest_slots 或 add_event，changes 和 search_query 為 null。\n'
+            '若無明確日期用今天，若無時間用09:00-10:00。'
         )}],
     )
     return json.loads(_strip_json(response.content[0].text))
@@ -74,7 +75,8 @@ def parse_edit(text: str, event: dict) -> dict:
             f'原事件：標題「{event.get("summary", "")}」，開始 {start}，結束 {end}\n'
             f'使用者說："{text}"\n\n'
             '回傳要修改的欄位（只含要改的），不加說明或 markdown：\n'
-            '{"title":"新標題","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"}'
+            '{"title":"新標題","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}\n'
+            '若要改成會議用 calendar_type: "meeting"，改成工作規劃用 calendar_type: "work"。'
         )}],
     )
     return json.loads(_strip_json(response.content[0].text))

@@ -101,29 +101,45 @@ def update_event(event_id: str, **changes) -> dict:
     except Exception:
         pass
 
+    source_cal_id = None
+    event = None
     for cal_id in cal_ids:
         try:
             event = service.events().get(calendarId=cal_id, eventId=event_id).execute()
+            source_cal_id = cal_id
+            break
         except Exception:
             continue
 
-        if 'title' in changes:
-            event['summary'] = changes['title']
+    if not event:
+        raise ValueError(f"Event {event_id} not found")
 
-        if any(k in changes for k in ('date', 'start_time', 'end_time')):
-            current_start = datetime.fromisoformat(event['start']['dateTime']).astimezone(TAIWAN_TZ)
-            current_end = datetime.fromisoformat(event['end']['dateTime']).astimezone(TAIWAN_TZ)
-            date = changes.get('date', current_start.strftime('%Y-%m-%d'))
-            start_time = changes.get('start_time', current_start.strftime('%H:%M'))
-            end_time = changes.get('end_time', current_end.strftime('%H:%M'))
-            start_dt = TAIWAN_TZ.localize(datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M"))
-            end_dt = TAIWAN_TZ.localize(datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M"))
-            event['start'] = {'dateTime': start_dt.isoformat()}
-            event['end'] = {'dateTime': end_dt.isoformat()}
+    if 'title' in changes:
+        event['summary'] = changes['title']
 
-        return service.events().update(calendarId=cal_id, eventId=event_id, body=event).execute()
+    if any(k in changes for k in ('date', 'start_time', 'end_time')):
+        current_start = datetime.fromisoformat(event['start']['dateTime']).astimezone(TAIWAN_TZ)
+        current_end = datetime.fromisoformat(event['end']['dateTime']).astimezone(TAIWAN_TZ)
+        date = changes.get('date', current_start.strftime('%Y-%m-%d'))
+        start_time = changes.get('start_time', current_start.strftime('%H:%M'))
+        end_time = changes.get('end_time', current_end.strftime('%H:%M'))
+        start_dt = TAIWAN_TZ.localize(datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M"))
+        end_dt = TAIWAN_TZ.localize(datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M"))
+        event['start'] = {'dateTime': start_dt.isoformat()}
+        event['end'] = {'dateTime': end_dt.isoformat()}
 
-    raise ValueError(f"Event {event_id} not found")
+    # 如果要換日曆類型，先 move 再 update
+    if 'calendar_type' in changes:
+        dest_cal_id = get_calendar_id(changes['calendar_type'])
+        if dest_cal_id != source_cal_id:
+            event = service.events().move(
+                calendarId=source_cal_id,
+                eventId=event_id,
+                destination=dest_cal_id,
+            ).execute()
+            source_cal_id = dest_cal_id
+
+    return service.events().update(calendarId=source_cal_id, eventId=event_id, body=event).execute()
 
 
 def delete_event(event_id: str) -> None:

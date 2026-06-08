@@ -50,7 +50,8 @@ def analyze_message(text: str) -> dict:
             '- "other"：其他\n\n'
             '判斷 calendar_type（新增時用）：\n'
             '- "meeting"：與他人的會議、約定、電話\n'
-            '- "work"：個人工作任務、專注時間\n\n'
+            '- "work"：個人工作任務、專注時間\n'
+            '- "kahowa"：有提到 Kahowa 的事件\n\n'
             '回傳格式（所有欄位都要有，沒有的填 null）：\n'
             '{"intent":"...","calendar_type":"meeting|work","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}}\n\n'
             '若 intent 為 edit_event：\n'
@@ -260,7 +261,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             s = slots[idx]
             calendar_api.create_event(title=title, date=s['date'], start_time=s['start'],
                                       end_time=s['end'], calendar_type=cal_type)
-            cal_label = '🗓 會議' if cal_type == 'meeting' else '💼 工作規劃'
+            cal_label = calendar_api.CAL_LABELS.get(cal_type, cal_type)
             await query.edit_message_text(
                 f"✅ 已新增到「{cal_label}」\n📌 {title}\n📅 {s['date']} {s['start']}–{s['end']}"
             )
@@ -312,7 +313,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             calendar_api.create_event(title=e['title'], date=e['date'],
                                       start_time=e['start_time'], end_time=e['end_time'],
                                       calendar_type=cal_type)
-            cal_label = '🗓 會議' if cal_type == 'meeting' else '💼 工作規劃'
+            cal_label = calendar_api.CAL_LABELS.get(cal_type, cal_type)
             await update.message.reply_text(
                 f"✅ 已新增到「{cal_label}」\n📌 {e['title']}\n📅 {e['date']} {e['start_time']}–{e['end_time']}"
             )

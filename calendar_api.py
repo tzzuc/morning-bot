@@ -7,10 +7,19 @@ from googleapiclient.discovery import build
 TAIWAN_TZ = pytz.timezone('Asia/Taipei')
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-MEETING_CAL_NAME = '🗓 會議'
-WORK_CAL_NAME = '💼 工作規劃'
-
 _calendar_ids: dict[str, str] = {}
+
+CAL_ENV_KEYS = {
+    'meeting': 'MEETING_CAL_ID',
+    'work': 'WORK_CAL_ID',
+    'kahowa': 'KAHOWA_CAL_ID',
+}
+
+CAL_LABELS = {
+    'meeting': '🗓 會議',
+    'work': '💼 工作規劃',
+    'kahowa': '🤝 Kahowa',
+}
 
 
 def get_service():
@@ -31,13 +40,26 @@ def get_calendar_id(calendar_type: str) -> str:
     if calendar_type in _calendar_ids:
         return _calendar_ids[calendar_type]
 
-    env_key = 'MEETING_CAL_ID' if calendar_type == 'meeting' else 'WORK_CAL_ID'
+    env_key = CAL_ENV_KEYS.get(calendar_type)
+    if not env_key:
+        raise ValueError(f"未知的日曆類型：{calendar_type}")
+
     cal_id = os.environ.get(env_key)
     if cal_id:
         _calendar_ids[calendar_type] = cal_id
         return cal_id
 
     raise ValueError(f"請在 Railway 設定環境變數 {env_key}")
+
+
+def _all_cal_ids() -> list[str]:
+    ids = []
+    for cal_type in CAL_ENV_KEYS:
+        try:
+            ids.append(get_calendar_id(cal_type))
+        except Exception:
+            pass
+    return ids or ['primary']
 
 
 def list_calendars() -> list[dict]:
@@ -54,13 +76,7 @@ def get_events(date: datetime) -> list[dict]:
     all_events = []
     seen = set()
 
-    cal_ids = ['primary']
-    try:
-        cal_ids += [get_calendar_id('meeting'), get_calendar_id('work')]
-    except Exception:
-        pass
-
-    for cal_id in cal_ids:
+    for cal_id in _all_cal_ids():
         items = service.events().list(
             calendarId=cal_id,
             timeMin=start.isoformat(),
@@ -94,15 +110,10 @@ def create_event(title: str, date: str, start_time: str, end_time: str,
 
 def update_event(event_id: str, **changes) -> dict:
     service = get_service()
-    cal_ids = ['primary']
-    try:
-        cal_ids += [get_calendar_id('meeting'), get_calendar_id('work')]
-    except Exception:
-        pass
 
     source_cal_id = None
     event = None
-    for cal_id in cal_ids:
+    for cal_id in _all_cal_ids():
         try:
             event = service.events().get(calendarId=cal_id, eventId=event_id).execute()
             source_cal_id = cal_id
@@ -127,7 +138,6 @@ def update_event(event_id: str, **changes) -> dict:
         event['start'] = {'dateTime': start_dt.isoformat()}
         event['end'] = {'dateTime': end_dt.isoformat()}
 
-    # 如果要換日曆類型，先 move 再 update
     if 'calendar_type' in changes:
         dest_cal_id = get_calendar_id(changes['calendar_type'])
         if dest_cal_id != source_cal_id:
@@ -143,12 +153,7 @@ def update_event(event_id: str, **changes) -> dict:
 
 def delete_event(event_id: str) -> None:
     service = get_service()
-    cal_ids = ['primary']
-    try:
-        cal_ids += [get_calendar_id('meeting'), get_calendar_id('work')]
-    except Exception:
-        pass
-    for cal_id in cal_ids:
+    for cal_id in _all_cal_ids():
         try:
             service.events().delete(calendarId=cal_id, eventId=event_id).execute()
             return

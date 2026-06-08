@@ -108,25 +108,9 @@ def create_event(title: str, date: str, start_time: str, end_time: str,
     return service.events().insert(calendarId=cal_id, body=event).execute()
 
 
-def update_event(event_id: str, **changes) -> dict:
-    service = get_service()
-
-    source_cal_id = None
-    event = None
-    for cal_id in _all_cal_ids():
-        try:
-            event = service.events().get(calendarId=cal_id, eventId=event_id).execute()
-            source_cal_id = cal_id
-            break
-        except Exception:
-            continue
-
-    if not event:
-        raise ValueError(f"Event {event_id} not found")
-
+def _apply_changes(event: dict, changes: dict) -> dict:
     if 'title' in changes:
         event['summary'] = changes['title']
-
     if any(k in changes for k in ('date', 'start_time', 'end_time')):
         current_start = datetime.fromisoformat(event['start']['dateTime']).astimezone(TAIWAN_TZ)
         current_end = datetime.fromisoformat(event['end']['dateTime']).astimezone(TAIWAN_TZ)
@@ -137,23 +121,47 @@ def update_event(event_id: str, **changes) -> dict:
         end_dt = TAIWAN_TZ.localize(datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M"))
         event['start'] = {'dateTime': start_dt.isoformat()}
         event['end'] = {'dateTime': end_dt.isoformat()}
+    return event
 
-    if 'calendar_type' in changes:
-        dest_cal_id = get_calendar_id(changes['calendar_type'])
-        if dest_cal_id != source_cal_id:
-            event = service.events().move(
-                calendarId=source_cal_id,
-                eventId=event_id,
-                destination=dest_cal_id,
-            ).execute()
-            source_cal_id = dest_cal_id
 
-    return service.events().update(calendarId=source_cal_id, eventId=event_id, body=event).execute()
+def update_event(event_id: str, **changes) -> dict:
+    service = get_service()
+
+    for cal_id in _all_cal_ids():
+        try:
+            event = service.events().get(calendarId=cal_id, eventId=event_id).execute()
+        except Exception:
+            continue
+
+        event = _apply_changes(event, changes)
+
+        if 'calendar_type' in changes:
+            dest_cal_id = get_calendar_id(changes['calendar_type'])
+            if dest_cal_id != cal_id:
+                try:
+                    event = service.events().move(
+                        calendarId=cal_id,
+                        eventId=event_id,
+                        destination=dest_cal_id,
+                    ).execute()
+                    cal_id = dest_cal_id
+                except Exception as e:
+                    raise ValueError(f"無法移動到目標日曆：{e}")
+
+        try:
+            return service.events().update(calendarId=cal_id, eventId=event_id, body=event).execute()
+        except Exception:
+            continue  # 這個日曆沒有寫入權限，試下一個
+
+    raise ValueError("找不到可以更新的事件")
 
 
 def delete_event(event_id: str) -> None:
     service = get_service()
-    for cal_id in _all_cal_ids():
+    # 跳過主要日曆（透過它看得到但刪不到其他日曆的事件）
+    cal_ids = [c for c in _all_cal_ids() if c != 'primary' and c != os.environ.get('MEETING_CAL_ID', '')]
+    cal_ids += [os.environ.get('MEETING_CAL_ID', 'primary')]  # meeting 放最後試
+    for cal_id in cal_ids:
         try:
             service.events().delete(calendarId=cal_id, eventId=event_id).execute()
             return

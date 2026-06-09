@@ -50,8 +50,9 @@ def analyze_message(text: str) -> dict:
             '- "other"：其他\n\n'
             '判斷 calendar_type（新增時用，優先順序由高到低）：\n'
             '- "kahowa"：訊息中有提到「kahowa」（不分大小寫）→ 一定用這個\n'
-            '- "work"：個人工作任務、專注時間、報告、整理\n'
+            '- "work"：個人工作任務、專注時間、報告、整理、有「工作規劃」等詞\n'
             '- "meeting"：與他人的會議、約定、電話（預設）\n\n'
+            '重要：title 不可以包含「工作規劃」「kahowa」「會議」這類日曆分類詞，只保留事件本身的名稱。\n\n'
             '回傳格式（所有欄位都要有，沒有的填 null）：\n'
             '{"intent":"...","calendar_type":"meeting|work","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}}\n\n'
             '若 intent 為 edit_event：\n'
@@ -357,12 +358,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cal_type = result.get('calendar_type', 'meeting')
             if 'kahowa' in text.lower():
                 cal_type = 'kahowa'
-            calendar_api.create_event(title=e['title'], date=e['date'],
-                                      start_time=e['start_time'], end_time=e['end_time'],
-                                      calendar_type=cal_type)
+            created = calendar_api.create_event(title=e['title'], date=e['date'],
+                                                start_time=e['start_time'], end_time=e['end_time'],
+                                                calendar_type=cal_type)
             cal_label = calendar_api.CAL_LABELS.get(cal_type, cal_type)
+            link = created.get('htmlLink', '')
             await update.message.reply_text(
                 f"✅ 已新增到「{cal_label}」\n📌 {e['title']}\n📅 {e['date']} {e['start_time']}–{e['end_time']}"
+                + (f"\n🔗 {link}" if link else "")
             )
 
         elif result['intent'] == 'edit_event':

@@ -369,7 +369,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = analyze_message(text)
 
         if result['intent'] == 'suggest_slots':
-            duration = result.get('duration_hours', 1)
+            duration = result.get('duration_hours') or 1
             slots = calendar_api.get_free_slots(days_ahead=7, duration_hours=duration)
             if not slots:
                 await update.message.reply_text('未來7天工作時段已排滿 😅')

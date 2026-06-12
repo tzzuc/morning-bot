@@ -17,6 +17,7 @@ from telegram.ext import (
 )
 
 import calendar_api
+import tasks_api
 
 logging.basicConfig(level=logging.INFO)
 
@@ -44,9 +45,10 @@ def analyze_message(text: str) -> dict:
             f'今天是 {today}。分析訊息，只回傳 JSON，不加任何說明或 markdown。\n\n'
             f'訊息："{text}"\n\n'
             '判斷 intent：\n'
-            '- "add_event"：新增一個全新的事件\n'
-            '- "suggest_slots"：想找可行時段安排會議（有「約」「找時間」「安排」等詞且沒有明確時間）\n'
-            '- "edit_event"：修改、更改、調整、改成、換成、移到 已存在的事件（有「改」「更改」「調整」「移到」「換成」等詞）\n'
+            '- "add_event"：新增一個全新的事件（有具體時間，如「下午2點」）\n'
+            '- "add_task"：新增有 deadline 的待辦事項（只有截止日期，沒有具體時間，如「週五前完成」「明天 deadline」）\n'
+            '- "suggest_slots"：想找可行時段安排會議\n'
+            '- "edit_event"：修改已存在的事件\n'
             '- "other"：其他\n\n'
             '判斷 calendar_type（新增時用，優先順序由高到低）：\n'
             '- "kahowa"：訊息中有提到「kahowa」（不分大小寫）→ 一定用這個\n'
@@ -54,7 +56,8 @@ def analyze_message(text: str) -> dict:
             '- "meeting"：與他人的會議、約定、電話（預設）\n\n'
             '重要：title 不可以包含「工作規劃」「kahowa」「會議」這類日曆分類詞，只保留事件本身的名稱。\n\n'
             '回傳格式（所有欄位都要有，沒有的填 null）：\n'
-            '{"intent":"...","calendar_type":"meeting|work","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}}\n\n'
+            '{"intent":"...","calendar_type":"meeting|work","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"task":{"title":"...","due_date":"YYYY-MM-DD"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}}\n\n'
+            '若 intent 為 add_task：填入 task 物件，event 為 null。\n'
             '若 intent 為 edit_event：\n'
             '- search_query：用來搜尋事件的關鍵字（事件名稱關鍵字）\n'
             '- changes：只含要修改的欄位；若要換日曆類型（如工作規劃改成會議），加入 calendar_type 欄位\n'
@@ -82,6 +85,27 @@ def parse_edit(text: str, event: dict) -> dict:
         )}],
     )
     return json.loads(_strip_json(response.content[0].text))
+
+
+async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        tasks = tasks_api.list_tasks()
+    except Exception as e:
+        await update.message.reply_text(f'❌ {e}')
+        return
+    if not tasks:
+        await update.message.reply_text('✨ 沒有待辦事項')
+        return
+
+    context.user_data['task_list'] = {str(i): t for i, t in enumerate(tasks)}
+    lines = ['📝 待辦事項：\n']
+    for i, t in enumerate(tasks):
+        lines.append(f"{i+1}. {tasks_api.format_task(t)}")
+    keyboard = [
+        [InlineKeyboardButton(f"✅ 完成 {i+1}", callback_data=f"task_done_{i}")]
+        for i in range(min(len(tasks), 8))
+    ]
+    await update.message.reply_text('\n'.join(lines), reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def calendars_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -182,7 +206,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    if data == 'move_confirm':
+    if data.startswith('task_done_'):
+        idx = data.removeprefix('task_done_')
+        task = context.user_data.get('task_list', {}).get(idx)
+        if task:
+            try:
+                tasks_api.complete_task(task['id'])
+                await query.edit_message_text(f"✅ 完成：{task.get('title', '')}")
+            except Exception as e:
+                await query.edit_message_text(f'❌ 失敗：{e}')
+
+    elif data == 'move_confirm':
         pending = context.user_data.pop('pending_move', None)
         if pending:
             try:
@@ -353,6 +387,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text('以下是可行的時段，選一個：',
                                             reply_markup=InlineKeyboardMarkup(keyboard))
 
+        elif result['intent'] == 'add_task' and result.get('task'):
+            t = result['task']
+            created = tasks_api.add_task(title=t['title'], due_date=t.get('due_date'))
+            due_str = f" (deadline {t['due_date']})" if t.get('due_date') else ""
+            await update.message.reply_text(f"✅ 已新增待辦：{t['title']}{due_str}")
+
         elif result['intent'] == 'add_event' and result.get('event'):
             e = result['event']
             cal_type = result.get('calendar_type', 'meeting')
@@ -417,10 +457,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
     await send_day_events(CHAT_ID, datetime.now(TAIWAN_TZ), context)
+    try:
+        tasks = tasks_api.list_tasks()
+        if tasks:
+            lines = ['📝 待辦事項：\n']
+            for t in tasks[:10]:
+                lines.append(f"• {tasks_api.format_task(t)}")
+            await context.bot.send_message(CHAT_ID, '\n'.join(lines))
+    except Exception as e:
+        logging.error(e)
 
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler('tasks', tasks_command))
     app.add_handler(CommandHandler('calendars', calendars_command))
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('today', today_command))

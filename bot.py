@@ -399,6 +399,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cal_type = result.get('calendar_type', 'meeting')
             if 'kahowa' in text.lower():
                 cal_type = 'kahowa'
+
+            # 處理缺失欄位
+            if not e.get('date'):
+                e['date'] = datetime.now(TAIWAN_TZ).strftime('%Y-%m-%d')
+            if not e.get('start_time'):
+                e['start_time'] = '09:00'
+            if not e.get('end_time'):
+                start_h, start_m = map(int, e['start_time'].split(':'))
+                e['end_time'] = f"{(start_h + 1) % 24:02d}:{start_m:02d}"
+
             created = calendar_api.create_event(title=e['title'], date=e['date'],
                                                 start_time=e['start_time'], end_time=e['end_time'],
                                                 calendar_type=cal_type)

@@ -44,12 +44,13 @@ def analyze_message(text: str) -> dict:
         messages=[{'role': 'user', 'content': (
             f'今天是 {today}。分析訊息，只回傳 JSON，不加任何說明或 markdown。\n\n'
             f'訊息："{text}"\n\n'
-            '判斷 intent：\n'
-            '- "add_event"：新增一個全新的事件（有具體時間，如「下午2點」）\n'
-            '- "add_task"：新增有 deadline 的待辦事項（只有截止日期，沒有具體時間，如「週五前完成」「明天 deadline」）\n'
+            '判斷 intent（最重要的規則）：\n'
+            '- "add_event"：訊息有「具體時間點」如「下午2點」「10:30」「早上9點」\n'
+            '- "add_task"：訊息沒有具體時間點，只有日期或完全沒提時間（如「週五前完成」「明天記得買菜」「整理文件」）→ 這時用 task\n'
             '- "suggest_slots"：想找可行時段安排會議\n'
             '- "edit_event"：修改已存在的事件\n'
             '- "other"：其他\n\n'
+            '判斷重點：有具體時間 → event，沒有具體時間 → task。不要為了補滿時間欄位而硬給預設值。\n\n'
             '判斷 calendar_type（新增時用，優先順序由高到低）：\n'
             '- "kahowa"：訊息中有提到「kahowa」（不分大小寫）→ 一定用這個\n'
             '- "work"：個人工作任務、專注時間、報告、整理、有「工作規劃」等詞\n'
@@ -57,12 +58,12 @@ def analyze_message(text: str) -> dict:
             '重要：title 不可以包含「工作規劃」「kahowa」「會議」這類日曆分類詞，只保留事件本身的名稱。\n\n'
             '回傳格式（所有欄位都要有，沒有的填 null）：\n'
             '{"intent":"...","calendar_type":"meeting|work","event":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"},"task":{"title":"...","due_date":"YYYY-MM-DD"},"duration_hours":1,"search_query":"...","changes":{"title":"...","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","calendar_type":"meeting|work"}}\n\n'
-            '若 intent 為 add_task：填入 task 物件，event 為 null。\n'
+            '若 intent 為 add_task：填入 task 物件，event 為 null。task.due_date 沒提到就為 null。\n'
             '若 intent 為 edit_event：\n'
             '- search_query：用來搜尋事件的關鍵字（事件名稱關鍵字）\n'
             '- changes：只含要修改的欄位；若要換日曆類型（如工作規劃改成會議），加入 calendar_type 欄位\n'
             '若 intent 為 suggest_slots 或 add_event，changes 和 search_query 為 null。\n'
-            '若無明確日期用今天，若無時間用09:00-10:00。'
+            '若 add_event 無明確日期用今天。'
         )}],
     )
     return json.loads(_strip_json(response.content[0].text))

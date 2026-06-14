@@ -45,7 +45,9 @@ def list_tasks(include_completed: bool = False) -> list[dict]:
     params = {'tasklist': _default_list_id(), 'showCompleted': include_completed}
     if not include_completed:
         params['showHidden'] = False
-    return service.tasks().list(**params).execute().get('items', [])
+    items = service.tasks().list(**params).execute().get('items', [])
+    # 有 due 的依日期排序在前，沒 due 的在後
+    return sorted(items, key=lambda t: (not t.get('due'), t.get('due', '')))
 
 
 def complete_task(task_id: str) -> dict:

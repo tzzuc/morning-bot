@@ -70,5 +70,5 @@ def format_task(task: dict) -> str:
     if due:
         due_dt = datetime.fromisoformat(due.replace('Z', '+00:00'))
         due_str = due_dt.strftime('%m/%d')
-        return f"⏰ {due_str} {title}"
-    return f"📝 {title}"
+        return f"{due_str} {title}"
+    return title
